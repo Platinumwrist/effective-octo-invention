@@ -1,0 +1,103 @@
+Command For Testing:
+====================
+```
+make -j20; ./tests/unit_test --run_test=eosio_msig_tests/check_earliest_exec_time_for_approve_and_unapprove -l all -r detailed -- --verbose
+```
+
+```
+rm -r *; cmake -DEOSIO_CDT_ROOT=/Users/john.debord/2cdts/develop/build -DCMAKE_PREFIX_PATH=/Users/john.debord/2eoss/develop/build -DBUILD_TESTS=TRUE ..; make -j20; ./tests/unit_test --run_test=eosio_wrap_tests/wrap_exec_direct -l all -r detailed -- --verbose 
+```
+
+Command For Dependencies:
+=========================
+```
+/Users/john.debord/2cdts/add-m-flag/build/bin/eosio-cpp -c -I/Users/john.debord/eosio.contracts/contracts/eosio.bios/include -O3 -abigen -abigen_output=/Users/john.debord/eosio.contracts/build/contracts/eosio.bios/eosio.bios.abi -contract eosio.bios -R/Users/john.debord/eosio.contracts/contracts/eosio.bios/ricardian -R/Users/john.debord/eosio.contracts/build/contracts/eosio.bios/ricardian -M /Users/john.debord/eosio.contracts/contracts/eosio.bios/src/eosio.bios.cpp
+```
+
+New `approve` Logic:
+====================
+`approve` (all of which after current logic)
+- If `earliest_exec_time` is !equal to max
+  - Exit Early (don't fail)
+- Call helper to get the set of approvals
+- Then pack it
+- Call `check_transaction_authorization` to see if approvals succeed
+- If succeeds?
+  - Change `earliest_exec_time` to specified time
+    "specified time" == (delay_secs + current_time)
+- If no success
+  - Exit early (don't fail)
+*** Write test case so that exec_time is set correctly ***
+
+New `unapprove` Logic:
+======================
+`unapprove` (all of which after current logic)
+- If `earliest_exec_time` is equal to max
+  - Exit Early (don't fail)
+- Call helper to get the set of approvals
+- Then pack it
+- Call `check_transaction_authorization` to see if approvals succeed
+- If succeeds?
+  - Exit Early (don't fail)
+- If no success
+  - Change `earliest_exec_time` to max
+*** Write test case so that exec_time is set correctly ***
+
+To Think About:
+===============
+How to divide computation among transactions while still preserving the atomicity of the transaction
+Think of some means of aborting it as well
+Think of some means of not committing results if the whole series of computatins wasn't atomic
+- `wait_weight`
+     wait   = time_point
+     weight = the magic accumulative authorization number
+
+Purpose of Deferred Transaction:
+================================
+Just to automate transactions that a server could do for yourself
+
+Notes:
+======
+`check_transaction_authorization` (`eosio.msig.cpp`) will have to be reworked?
+
+In `eosio.msig.cpp` `send_deferred` will have to be replaced:
+.. ```
+.. send_deferred( (uint128_t(proposer.value) << 64) | proposal_name.value, executer,
+..                   prop.packed_transaction.data(), prop.packed_transaction.size() );
+.. ```
+
+Forget first three ignores in `propose`:
+```
+void multisig::propose( ignore<name> proposer,
+                        ignore<name> proposal_name,
+                        ignore<std::vector<permission_level>> requested,
+                        ignore<transaction> trx ) // Deserialize `trx` at the beginning (check for ctx free trx)
+```
+
+Determine the earliest time at which you can execute a trx:
+```
+fc::unsigned_int       delay_sec           = 0UL; /// number of seconds to delay this transaction for during which it may be canceled.
+```
+
+- Anytime approve or unnapprove are called:
+  Give me current set of approvals (refacter that from exec)?
+
+FIRST STEP:
+-----------
+- Given this proposal
+  - Give me the proposers that haven't been invalidated
+
+SECOND STEP:
+-----------
+- Introduce the `earliest_exec_time` to the `proposal` struct
+- Add the logic to `approve` and `unapprove` that will set and reset effectively based on checking the current set of authorizations
+
+THIRD STEP:
+-----------
+- Add test that does a propose transaction and checks the time (max). Then does
+  an approval once (sees time hasn't changed), then does one approval (sees the
+  `exec_time` changes)
+
+*unpack trx using fc::variant (ask around).
+
+Review This Link: https://github.com/EOSIO/spec-repo/blob/master/esr_deprecate_deferred.md
