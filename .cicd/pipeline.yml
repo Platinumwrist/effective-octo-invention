@@ -1,0 +1,29 @@
+steps:
+  - wait
+
+  - label: ":webhook: Trigger Travis CI Build"
+    command: |
+      ./.cicd/trigger-travis.sh
+    agents:
+      queue: "automation-eos-builder-fleet"
+    timeout: ${TIMEOUT:-5}
+    soft_fail: true # until the API key is switched from travis-ci.org to travis-ci.com
+
+  - wait
+
+  - label: ":ubuntu: Ubuntu 18.04 — Build and Test"
+    command: |
+      . /eosio.contracts/.cicd/travis-build.sh
+    agents:
+      queue: "automation-docker-builder-fleet"
+    plugins:
+      - docker#v3.2.0:
+          always-pull: true
+          debug: $DEBUG
+          image: "eosio/ci-contracts-builder:latest"
+          mount-buildkite-agent: true
+          mount-checkout: true
+          propagate-environment: true
+          shell: ["/bin/bash", "-i", "-e", "-c"]
+          workdir: "/eosio.contracts"
+    timeout: ${TIMEOUT:-300}
